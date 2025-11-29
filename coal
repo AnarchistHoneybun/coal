@@ -32,17 +32,19 @@ show_usage() {
     fi
     
     cat << EOF
-usage: coal <command> [day]
+usage: coal <command> [day] [options]
 
 commands:
-  setup <day>     create source file and fetch input
-  run <day>       compile and run with real input
-  compile <day>   compile only
-  test <day>      run with test input (inputs/dayXX_test.txt)
-  fetch <day>     fetch input only
-  clean [day]     remove binary (all if no day given)
-  status          show progress
-  help            show this message
+  setup <day>         create source file and fetch input
+  run <day>           compile and run with real input
+  compile <day>       compile only
+  test <day>          run with test input (inputs/dayXX_test.txt)
+  fetch <day>         fetch input only
+  submit <day> <part> <answer>
+                      submit answer for part 1 or 2
+  clean [day]         remove binary (all if no day given)
+  status              show progress
+  help                show this message
 
 config:
   year: ${AOC_YEAR:-not set}
@@ -210,6 +212,82 @@ show_status() {
     done
 }
 
+parse_submit_response() {
+    local response="$1"
+    
+    # Check for various response patterns
+    if echo "$response" | grep -q "That's the right answer"; then
+        echo "correct"
+    elif echo "$response" | grep -q "That's not the right answer"; then
+        echo "incorrect"
+    elif echo "$response" | grep -q "You gave an answer too recently"; then
+        echo "too_soon"
+    elif echo "$response" | grep -q "Did you already complete it?"; then
+        echo "already_completed"
+    elif echo "$response" | grep -q "That's not quite right"; then
+        echo "incorrect"
+    else
+        echo "unknown"
+    fi
+}
+
+submit_answer() {
+    local day=$1
+    local part=$2
+    local answer=$3
+    
+    if [ -z "$AOC_SESSION" ] || [ "$AOC_SESSION" == "your_session_cookie_here" ]; then
+        print_error "session not configured in .env"
+        return 1
+    fi
+    
+    if [ -z "$day" ] || [ -z "$part" ] || [ -z "$answer" ]; then
+        print_error "usage: coal submit <day> <part> <answer>"
+        return 1
+    fi
+    
+    if [ "$part" != "1" ] && [ "$part" != "2" ]; then
+        print_error "part must be 1 or 2"
+        return 1
+    fi
+    
+    local url="https://adventofcode.com/${AOC_YEAR}/day/${day}/answer"
+    
+    print_info "submitting answer '$answer' for day $day part $part..."
+    
+    local response=$(curl -s -b "session=${AOC_SESSION}" \
+        -X POST \
+        -d "level=${part}&answer=${answer}" \
+        "$url")
+    
+    local result=$(parse_submit_response "$response")
+    
+    case "$result" in
+        correct)
+            print_success "That's the right answer! ⭐"
+            ;;
+        incorrect)
+            print_error "That's not the right answer"
+            # Try to extract hint if available
+            if echo "$response" | grep -q "too low"; then
+                print_info "Hint: your answer is too low"
+            elif echo "$response" | grep -q "too high"; then
+                print_info "Hint: your answer is too high"
+            fi
+            ;;
+        too_soon)
+            print_warning "You gave an answer too recently. Please wait before trying again."
+            ;;
+        already_completed)
+            print_warning "You already completed this puzzle!"
+            ;;
+        *)
+            print_error "Unable to parse response. Check your internet connection."
+            return 1
+            ;;
+    esac
+}
+
 # main dispatcher
 main() {
     if [ $# -eq 0 ]; then
@@ -240,6 +318,9 @@ main() {
         fetch)
             [ -z "$1" ] && print_error "day required" && exit 1
             fetch_input "$1"
+            ;;
+        submit)
+            submit_answer "$1" "$2" "$3"
             ;;
         clean)
             clean_day "$1"
