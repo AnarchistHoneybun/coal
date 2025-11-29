@@ -64,6 +64,12 @@ setup_day() {
 
     mkdir -p "$SRC_DIR" "$BIN_DIR" "$INPUT_DIR"
 
+    # Ensure aoc_utils.h exists in project root
+    if [ ! -f "aoc_utils.h" ]; then
+        print_error "aoc_utils.h not found in project root"
+        exit 1
+    fi
+
     if [ -f "$code_file" ]; then
         print_warning "$code_file exists, skipping"
     else
@@ -117,9 +123,16 @@ compile_day() {
         return 1
     fi
 
+    # Check for aoc_utils.h
+    if [ ! -f "aoc_utils.h" ]; then
+        print_error "aoc_utils.h not found in project root"
+        return 1
+    fi
+
     mkdir -p "$BIN_DIR"
     
-    if gcc -o "$binary" "$code_file" -Wall -Wextra -O2 -std=c11 -lm 2>&1; then
+    # Include current directory for aoc_utils.h
+    if gcc -o "$binary" "$code_file" -I. -Wall -Wextra -O2 -std=c11 -lm 2>&1; then
         print_success "compiled $binary"
         return 0
     else
